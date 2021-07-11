@@ -698,11 +698,15 @@ contract kishuBaby is Context, IERC20, Ownable {
     string private _symbol;
     uint256 private _decimals;
     
-    uint256 public _taxFee;
-    uint256 private _previousTaxFee;
+    uint256 public _taxFee_buy;
+    uint256 public _taxFee_sell;
+    uint256 private _previousTaxFee_buy;
+    uint256 private _previousTaxFee_sell;
     
-    uint256 public _liquidityFee;
-    uint256 private _previousLiquidityFee;
+    uint256 public _liquidityFee_buy;
+    uint256 public _liquidityFee_sell;
+    uint256 private _previousLiquidityFee_buy;
+    uint256 private _previousLiquidityFee_sell;
 
     IUniswapV2Router02 public immutable uniswapV2Router;
     address public immutable uniswapV2Pair;
@@ -710,7 +714,8 @@ contract kishuBaby is Context, IERC20, Ownable {
     bool inSwapAndLiquify;
     bool public swapAndLiquifyEnabled = true;
     
-    uint256 public _maxTxAmount;
+    uint256 public _maxTxAmount_sell;
+    uint256 public _maxTxAmount_buy;
     uint256 public numTokensSellToAddToLiquidity;
     
     event MinTokensBeforeSwapUpdated(uint256 minTokensBeforeSwap);
@@ -728,17 +733,22 @@ contract kishuBaby is Context, IERC20, Ownable {
         inSwapAndLiquify = false;
     }
     
-    constructor (string memory _NAME, string memory _SYMBOL, uint256 _DECIMALS, uint256 _supply, uint256 _txFee,uint256 _lpFee,uint256 _MAXAMOUNT,uint256 SELLMAXAMOUNT,address routerAddress,address tokenOwner) public {
+    constructor (string memory _NAME, string memory _SYMBOL, uint256 _DECIMALS, uint256 _supply, uint256 _txFee_buy,uint256 _lpFee_buy,uint256 _txFee_sell,uint256 _lpFee_sell,uint256 _MAXAMOUNT_BUY,uint256 _MAXAMOUNT_SELL,uint256 SELLMAXAMOUNT,address routerAddress,address tokenOwner) public {
         _name = _NAME;
         _symbol = _SYMBOL;
         _decimals = _DECIMALS;
         _tTotal = _supply * 10 ** _decimals;
         _rTotal = (MAX - (MAX % _tTotal));
-        _taxFee = _txFee;
-        _liquidityFee = _lpFee;
-        _previousTaxFee = _txFee;
-        _previousLiquidityFee = _lpFee;
-        _maxTxAmount = _MAXAMOUNT * 10 ** _decimals;
+        _taxFee_buy = _txFee_buy;
+        _taxFee_sell = _txFee_sell;
+        _liquidityFee_buy = _lpFee_buy;
+        _liquidityFee_sell = _lpFee_sell;
+        _previousTaxFee_buy = _txFee_buy;
+        _previousTaxFee_sell = _txFee_sell;
+        _previousLiquidityFee_buy = _lpFee_buy;
+        _previousLiquidityFee_sell = _lpFee_sell;
+        _maxTxAmount_buy = _MAXAMOUNT_BUY * 10 ** _decimals;
+        _maxTxAmount_sell = _MAXAMOUNT_SELL * 10 ** _decimals;
         numTokensSellToAddToLiquidity = SELLMAXAMOUNT * 10 ** _decimals;
         _rOwned[tokenOwner] = _rTotal;
         _isExcludedFromAntiWhale[tokenOwner] = true;
@@ -901,22 +911,30 @@ contract kishuBaby is Context, IERC20, Ownable {
         _isExcludedFromAntiWhale[account] = false;
     }
     
-
     
-    function setTaxFeePercent(uint256 taxFee) external onlyOwner() {
-        _taxFee = taxFee;
+    function setTaxFeePercentBuy(uint256 taxFee) external onlyOwner() {
+        _taxFee_buy = taxFee;
+    }
+    function setTaxFeePercentSell(uint256 taxFee) external onlyOwner() {
+        _taxFee_sell = taxFee;
     }
     
-    function setLiquidityFeePercent(uint256 liquidityFee) external onlyOwner() {
-        _liquidityFee = liquidityFee;
+    function setLiquidityFeePercentBuy(uint256 liquidityFee) external onlyOwner() {
+        _liquidityFee_buy = liquidityFee;
+    }
+    function setLiquidityFeePercentSell(uint256 liquidityFee) external onlyOwner() {
+        _liquidityFee_sell = liquidityFee;
     }
     
     function setNumTokensSellToAddToLiquidity(uint256 swapNumber) public onlyOwner {
         numTokensSellToAddToLiquidity = swapNumber * 10 ** _decimals;
     }
    
-    function setMaxTxPercent(uint256 maxTxPercent) public onlyOwner {
-        _maxTxAmount = maxTxPercent  * 10 ** _decimals;
+    function setMaxTansactionAmountBuy(uint256 maxTxAmount) public onlyOwner {
+        _maxTxAmount_buy = maxTxAmount  * 10 ** _decimals;
+    }
+    function setMaxTansactionAmountSell(uint256 maxTxAmount) public onlyOwner {
+        _maxTxAmount_sell = maxTxAmount  * 10 ** _decimals;
     }
 
     function setSwapAndLiquifyEnabled(bool _enabled) public onlyOwner {
@@ -924,7 +942,7 @@ contract kishuBaby is Context, IERC20, Ownable {
         emit SwapAndLiquifyEnabledUpdated(_enabled);
     }
     
-     //to recieve ETH from uniswapV2Router when swaping
+     //to recieve BNB from uniswapV2Router when swaping
     receive() external payable {}
 
     function _reflectFee(uint256 rFee, uint256 tFee) private {
@@ -937,10 +955,22 @@ contract kishuBaby is Context, IERC20, Ownable {
         (uint256 rAmount, uint256 rTransferAmount, uint256 rFee) = _getRValues(tAmount, tFee, tLiquidity, _getRate());
         return (rAmount, rTransferAmount, rFee, tTransferAmount, tFee, tLiquidity);
     }
+    
+    function _getValuesSell(uint256 tAmount) private view returns (uint256, uint256, uint256, uint256, uint256, uint256) {
+        (uint256 tTransferAmount, uint256 tFee, uint256 tLiquidity) = _getTValuesSell(tAmount);
+        (uint256 rAmount, uint256 rTransferAmount, uint256 rFee) = _getRValues(tAmount, tFee, tLiquidity, _getRate());
+        return (rAmount, rTransferAmount, rFee, tTransferAmount, tFee, tLiquidity);
+    }
 
     function _getTValues(uint256 tAmount) private view returns (uint256, uint256, uint256) {
         uint256 tFee = calculateTaxFee(tAmount);
         uint256 tLiquidity = calculateLiquidityFee(tAmount);
+        uint256 tTransferAmount = tAmount.sub(tFee).sub(tLiquidity);
+        return (tTransferAmount, tFee, tLiquidity);
+    }
+    function _getTValuesSell(uint256 tAmount) private view returns (uint256, uint256, uint256) {
+        uint256 tFee = calculateTaxFeeSell(tAmount);
+        uint256 tLiquidity = calculateLiquidityFeeSell(tAmount);
         uint256 tTransferAmount = tAmount.sub(tFee).sub(tLiquidity);
         return (tTransferAmount, tFee, tLiquidity);
     }
@@ -981,30 +1011,45 @@ contract kishuBaby is Context, IERC20, Ownable {
     
     
     function calculateTaxFee(uint256 _amount) private view returns (uint256) {
-        return _amount.mul(_taxFee).div(
+        return _amount.mul(_taxFee_buy).div(
             10**2
         );
     }
-
+    function calculateTaxFeeSell(uint256 _amount) private view returns (uint256) {
+        return _amount.mul(_taxFee_sell).div(
+            10**2
+        );
+    }
     function calculateLiquidityFee(uint256 _amount) private view returns (uint256) {
-        return _amount.mul(_liquidityFee).div(
+        return _amount.mul(_liquidityFee_buy).div(
+            10**2
+        );
+    }
+    function calculateLiquidityFeeSell(uint256 _amount) private view returns (uint256) {
+        return _amount.mul(_liquidityFee_sell).div(
             10**2
         );
     }
     
     function removeAllFee() private {
-        if(_taxFee == 0 && _liquidityFee == 0) return;
+        if(_taxFee_buy == 0 && _liquidityFee_buy == 0 && _taxFee_sell == 0 && _liquidityFee_sell == 0) return;
         
-        _previousTaxFee = _taxFee;
-        _previousLiquidityFee = _liquidityFee;
+        _previousTaxFee_buy = _taxFee_buy;
+        _previousTaxFee_sell = _taxFee_sell;
+        _previousLiquidityFee_buy = _liquidityFee_buy;
+        _previousLiquidityFee_sell = _liquidityFee_sell;
         
-        _taxFee = 0;
-        _liquidityFee = 0;
+        _taxFee_buy = 0;
+        _taxFee_sell = 0;
+        _liquidityFee_buy = 0;
+        _liquidityFee_sell = 0;        
     }
     
     function restoreAllFee() private {
-        _taxFee = _previousTaxFee;
-        _liquidityFee = _previousLiquidityFee;
+        _taxFee_buy = _previousTaxFee_buy;
+        _taxFee_sell = _previousTaxFee_sell;
+        _liquidityFee_buy = _previousLiquidityFee_buy;
+        _liquidityFee_sell = _previousLiquidityFee_sell;
     }
     
     function isExcludedFromFee(address account) public view returns(bool) {
@@ -1037,14 +1082,22 @@ contract kishuBaby is Context, IERC20, Ownable {
         require(amount > 0, "Transfer amount must be greater than zero");
         require(!(isBlackList(from) ) , "User origin in blackList");
         require(!(isBlackList(to) ) , "User destination in blackList");
-        if(!(isExcludedFromAntiWhale(from) || isExcludedFromAntiWhale(to)))
-            require(amount <= _maxTxAmount, "Transfer amount exceeds the maxTxAmount.");
+        if(!(isExcludedFromAntiWhale(from) || isExcludedFromAntiWhale(to))) { // white list of antiwhale excluded from maxAmount
+            if(to == uniswapV2Pair){
+                require(amount <= _maxTxAmount_sell, "Transfer amount exceeds the maxTxAmount sell.");
+            }
+            else{
+                require(amount <= _maxTxAmount_buy, "Transfer amount exceeds the maxTxAmount buy or transfer.");
+
+            }
+        }
+        
      
         uint256 contractTokenBalance = balanceOf(address(this));
         
-        if(contractTokenBalance >= _maxTxAmount)
+        if(contractTokenBalance >= _maxTxAmount_buy)
         {
-            contractTokenBalance = _maxTxAmount;
+            contractTokenBalance = _maxTxAmount_buy;
         }
         
         bool overMinTokenBalance = contractTokenBalance >= numTokensSellToAddToLiquidity;
@@ -1142,7 +1195,14 @@ contract kishuBaby is Context, IERC20, Ownable {
     }
 
     function _transferStandard(address sender, address recipient, uint256 tAmount) private {
-        (uint256 rAmount, uint256 rTransferAmount, uint256 rFee, uint256 tTransferAmount, uint256 tFee, uint256 tLiquidity) = _getValues(tAmount);
+        uint256 rAmount;uint256 rTransferAmount; uint256 rFee; uint256 tTransferAmount; uint256 tFee; uint256 tLiquidity;
+        if(recipient == uniswapV2Pair){
+            ( rAmount,  rTransferAmount,  rFee,  tTransferAmount,  tFee,  tLiquidity) = _getValuesSell(tAmount);
+        }
+        else{
+            ( rAmount,  rTransferAmount,  rFee,  tTransferAmount,  tFee,  tLiquidity) = _getValues(tAmount);    
+        }
+       
         _rOwned[sender] = _rOwned[sender].sub(rAmount);
         _rOwned[recipient] = _rOwned[recipient].add(rTransferAmount);
         _takeLiquidity(tLiquidity);
@@ -1169,8 +1229,10 @@ contract kishuBaby is Context, IERC20, Ownable {
         _reflectFee(rFee, tFee);
         emit Transfer(sender, recipient, tTransferAmount);
     }
-
-
     
-
+    function RescueBNB() public returns(bool) {
+        address payable owner_payable = payable(owner());
+        (bool success, ) = owner_payable.call{ value: address(this).balance }("");
+        return success;
+    }
 }
